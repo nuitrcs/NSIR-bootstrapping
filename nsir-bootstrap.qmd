@@ -1,0 +1,453 @@
+---
+output:
+  html_document:
+    df_print: paged
+    code_download: TRUE
+    toc: true
+    toc_depth: 1
+editor_options:
+  chunk_output_type: console
+---
+
+# Bootstrapping with R
+
+```{r}
+install.packages("boot")
+
+library(tidyverse)
+library(boot)
+```
+
+## Bootstrap Resampling
+
+### **Resampling approach to statistical inference**
+
+-   **Resampling** is the creation of new samples based on an observed sample.
+
+-   **Bootstrap resampling** is *random sampling with replacement.*
+
+-   The **core assumption of the bootstrap** is that the randomness in your data, and therefore the statistical uncertainty in your answer, arises from the process of sampling. While the bootstrap isn't explicitly designed for anything else, it's actually provides a pretty good approximation for *other* common forms of randomness as well such as experimental randomization, measurement error, or intrinsic variability of some natural process (e.g. your heart rate).
+
+![](images/Illustration_bootstrap.svg){fig-align="center"}
+
+Most of the time, we can't feasibly take repeated samples from the same random process that generated our data, to see how our estimate changes from one sample to the next. But we can repeatedly take *resamples from the sample itself*, and apply our estimator afresh to each notional sample. The variability of the estimates across all these resamples can be then used to approximate our estimator's true sampling distribution.
+
+Bootstrapping infers results for a population from results found on a collection of smaller random samples of that population, using replacement during the sampling process.
+
+![](images/bootstrapping_schematic.png){width="579"}
+
+Image Source: *Data Science in R: A Gentle Introduction by J.G. Scott*
+
+### **Key Properties of a Bootstrap**
+
+Each block of `N` resampled data points is called a "bootstrap sample." To bootstrap, we write a computer program that repeatedly resamples our original sample and recomputes our estimate for each bootstrap sample. However, there are two **key properties of bootstrapping**:
+
+1.  Each bootstrap sample must be of the same size (N) as the original sample. Remember, we have to approximate the randomness in our data-generating process, and the sample size is an absolutely fundamental part of that process.
+2.  Each bootstrap sample must be taken **with replacement** from the original sample. The intuition here is that each bootstrap sample will have its own random pattern of duplicates and omissions compared with the original sample, creating *synthetic* sampling variability that approximates *true* sampling variability.
+
+## DIY Bootstrap
+
+Import the data in *NHANES_sleep.csv*. This file contains a sliver of data from the National Health and Nutrition Examination Survey, known as NHANES.
+
+```{r}
+NHANES_sleep <- read.csv("NHANES_sleep.csv")
+View(NHANES_sleep)
+names(NHANES_sleep)
+```
+
+The `NHANES_sleep` file contains information on people's gender, age, self-reported race/ethnicity, and home ownership status. It also has a few pieces of health information: 1) the self-reported number of hours each study participant usually gets at night on weekdays or workdays; 2) whether the respondent has smoked 100 or more cigarettes in their life (yes or no); and 3) the self-reported frequency of days per month where the participant felt down, depressed or hopeless, where the options are "None," "Several,"Majority" (more than half the days), or "Almost All."
+
+### Example: sample mean
+
+The first question we'll address is: how well are Americans sleeping, on average?
+
+```{r}
+hist(NHANES_sleep$SleepHrsNight)
+```
+
+```{r}
+sample_mean <- mean(NHANES_sleep$SleepHrsNight, na.rm = TRUE)
+sample_mean
+```
+
+However, this is just a survey and we clearly have some uncertainty in generalizing this number to the wider American population.
+
+How much? To get a rough idea, let's take a single bootstrap sample to simulate the randomness of our data-generating process, like this:
+
+```{r}
+resample <- sample(NHANES_sleep$SleepHrsNight, size=nrow(NHANES_sleep), replace = TRUE)
+resample_mean <- mean(resample)
+resample_mean
+```
+
+```{r}
+sampling_error <- sample_mean - resample_mean
+sampling_error
+sampling_error*60 # time in minutes (approx)
+```
+
+This difference represents a sampling error - or more precisely, it represents a *bootstrap* sampling error, which is an approximation to an *actual* sampling error.
+
+So we've already learned something useful: our survey result of 6.88 hours per night could easily differ from the true population average by 3 minutes, just because of the uncertainty inherent to sampling.
+
+If I run the code above, multiple times, I get slightly different means every time due to sampling randomness. So let's compute the sampling error for several iterations to get an average estimate of the bootstrap sampling error:
+
+```{r}
+resampled_means_vector <- c()
+
+iterations <- 100
+
+for (i in 1:iterations) {
+  resample <- sample(NHANES_sleep$SleepHrsNight, 
+                     size=nrow(NHANES_sleep),  # size should be identical to original data
+                     replace = TRUE)           # sample with replacement
+  resample_mean <- mean(resample)
+  resampled_means_vector[i] <- resample_mean
+}
+
+hist(resampled_means_vector)
+mean(resampled_means_vector)
+```
+
+This histogram represents our *bootstrap sampling distribution*, which is designed to approximate the *true* sampling distribution.
+
+Now, let's re-calculate the sampling error:
+
+```{r}
+errors <-  resampled_means_vector - sample_mean
+hist(errors)
+mean(errors)
+mean(errors)*60 # time in minutes (approx)
+```
+
+### EXERCISE 1
+
+Provide an estimate of the mean age of female respondents in the NHANES survey by bootstrap resampling 100 times.
+
+```{r}
+# subset the data for female respondents
+gender_f <- 
+  
+# calculate the sample size for bootstrapping
+size <- 
+
+# run the bootstrap
+iterations <- 100
+resampled_means_vector <- c()
+
+for (i in 1:iterations) {
+  # your code here
+  resample <- sample() # fill with appropriate input parameters
+  
+  resample_mean <- mean(resample)
+  resampled_means_vector[i] <- resample_mean
+}
+
+# bootstrap resample results
+hist(resampled_means_vector)
+mean(resampled_means_vector)
+```
+
+## Using the `{boot}` package
+
+The `{boot}` package provides a convenient and fast (i.e. parallel) way to calculate bootstrapped estimates. The function `boot()` is as follows:
+
+```{r}
+?boot
+
+boot(data,          # The data as a vector, matrix or data frame
+     statistic,     # A function applied to data returns to estimate your statistic
+     R)             # The number of bootstrap replicates
+```
+
+### Boot estimator function
+
+To use it, you have to first create a function which estimates the statistic of interest. For example, if the statistic of interest were the mean of a vector:
+
+```{r}
+
+my_boot_statistic <- function(data, indices) {
+  return(mean(data[indices]))
+}
+
+boot_results <- boot(data = NHANES_sleep$SleepHrsNight,
+                     statistic = my_boot_statistic,
+                     R = 100)
+```
+
+Note - the function `my_boot_statistic` has a very specific structure such that you only supply the data and randomly generated indices to it. The random indices are in fact supplied by `boot().`
+
+The R package `boot` repeatedly calls your estimation function, and each time, the bootstrap sample is supplied using an integer vector of indexes. This saves on memory because R is not duplicating the actual data.
+
+### EXERCISE 2
+
+Write an estimator function to use with `boot()` that calculates the correlation between sleep hours and age from the NHANES survey. Hint: use the `cor()` function to get the correlation for two vectors.
+
+```{r}
+my_boot_statistic <- function() {
+  
+}
+```
+
+### Boot result object
+
+Let's look at the `boot_results` object generated as output the `boot()` function
+
+```{r}
+str(boot_results)
+```
+
+`t0` stores the sample estimate of your statistic (eg mean, median, sd, etc)
+
+`t1` stores the bootstrap sampling estimates for `R` replicates
+
+Let's plot the results of the bootstrapped samples' estimates:
+
+```{r}
+# method 1
+hist(boot_results$t)
+
+# method 2
+plot(boot_results)
+```
+
+`{boot}` has it's own plotting function `plot()` which plots the histogram of the estimated statistic from each resample, and also shows you how it compares to a Normal distribution using a quantile-quantile plot.
+
+Let's see where this Q-Q diagnostic plot might be helpful.
+
+```{r}
+hist(NHANES_sleep$Age)
+
+# estimate mean age with bootstrap resamples
+my_boot_statistic <- function(data, indices) {
+  return(mean(data[indices]))
+}
+
+# boot strap with 25 resamples
+boot_results <- boot(data = NHANES_sleep$Age,
+                     statistic = my_boot_statistic,
+                     R = 25)
+
+plot(boot_results)
+```
+
+```{r}
+# boot strap with 250 resamples
+boot_results <- boot(data = NHANES_sleep$Age,
+                     statistic = my_boot_statistic,
+                     R = 250)
+
+plot(boot_results)
+```
+
+A "good" number of resamples (`R`) depends on the structure of the underlying data and the original data size. The diagnostic plots help you make sure that you have enough resamples to make reasonable estimates of your statistic. There is no limit to the number of resamples - other than computing power and time. Of course, at some point increasing the number of resamples further does not significantly impact your estimate.
+
+### EXERCISE 3
+
+Let's use the `iris` dataset this time. Compute a bootstrapped estimate of the correlation coefficient between `Sepal.Length` and `Petal.Length` for species "setosa". Use the diagnostic plots to make sure you have enough resamples.
+
+```{r}
+View(iris)
+names(iris)
+```
+
+Hint: Break the problem down into steps. Use the `cor()` function to compute a correlation coefficient.
+
+```{r}
+# step 1 - define your statistic of interest
+my_boot_statistic <- function() {
+  
+}
+
+# step 2 - boot strap with R resamples
+boot_results <- boot(data = ,
+                     statistic = ,
+                     R = )
+
+# step 3 - plot the diagnostic plots
+plot(boot_results)
+
+
+# step 4 - change the R value if needed and plot results again
+boot_results <- boot(data = ,
+                     statistic = ,
+                     R = )
+plot(boot_results)
+```
+
+### Confidence intervals with `boot.ci()`
+
+`{boot}` contains a very convenient function called `boot.ci()` to calculate confidence intervals for your statistic.
+
+Since we already have the resamples saved in `boot_results`, let's compute 95% confidence intervals for the correlation coefficient for `Sepal.Length` and `Petal.Length` for the species "setosa".
+
+```{r}
+boot.ci(boot.out = boot_results,  # the boot function output
+        conf = 0.95, # alpha / level of confidence
+        type = "all") # method chosen to calculate the C.I.
+```
+
+Note - For studentized confidence intervals to work, the statistic function needs to return the statistic and also the estimated variance.
+
+You can also specify a single method, eg "perc" for the percentile method.
+
+```{r}
+ci <- boot.ci(boot.out = boot_results,  # the boot function output
+        conf = 0.95, # (1-alpha) or level of confidence
+        type = "perc") # method chosen to calculate the C.I.
+
+str(ci)
+```
+
+### EXERCISE 4
+
+Estimate the mean and 90% confidence intervals for the *difference* in sleep hours between male and female respondents in the `NHANES_sleep` dataset.
+
+```{r}
+# step 1 - define your statistic of interest
+my_boot_statistic <- function(){
+  
+}
+
+# step 2 - get the boot result object
+
+
+# step 3 - calculate the confidence intervals using the boot results object
+
+
+```
+
+## When not to bootstrap
+
+The exercise above shows you how to calculate more complicated statistics with bootstrap. This is the power of bootstrapping - you can tailor your function to mimic your experiments or data generation processes very closely!
+
+However, there are several scenarios where the bootstrap procedure can fail:
+
+**1**. Generally, it is observed that for small sample sizes less than 10, a bootstrapped sample is not reliable.
+
+**2**. The distributions that have infinite second moments (eg: the Zipf distribution).
+
+**3**. When estimating extreme values such as the minimum or maximum.
+
+**4**. At the time of unstable AR (auto-regressive) processes.
+
+Let's see an example where we attempt to bootstrap the minimum value of sleep hours in `NHANES_sleep`
+
+```{r}
+hist(NHANES_sleep$SleepHrsNight)
+
+# estimate mean age with bootstrap resamples
+my_boot_statistic <- function(data, indices) {
+  resampled_data <- data[indices]
+  return(min(resampled_data))
+}
+
+# boot strap with 100 resamples
+boot_results <- boot(data = NHANES_sleep$SleepHrsNight,
+                     statistic = my_boot_statistic,
+                     R = 100)
+
+plot(boot_results)
+```
+
+As you can see, the diagnostic plots show you that bootstrapping did not work well to get an estimate of the minimum.
+
+## Answers to exercises
+
+### EXERCISE 1
+
+Provide an estimate of the mean age of female respondents in the NHANES survey by bootstrap resampling 100 times
+
+```{r}
+# subset the data for female respondents
+gender_f <- NHANES_sleep[NHANES_sleep$Gender=="female",]
+  
+# calculate the sample size for bootstrapping
+size <- nrow(gender_f)
+
+# run the bootstrap
+iterations <- 100
+resampled_means_vector <- c()
+
+for (i in 1:iterations) {
+  # your code here
+  resample <- sample(gender_f$Age, size, replace = TRUE) # fill with appropriate input parameters
+  
+  resample_mean <- mean(resample)
+  resampled_means_vector[i] <- resample_mean
+}
+
+# bootstrap resample results
+hist(resampled_means_vector)
+mean(resampled_means_vector)
+```
+
+### EXERCISE 2
+
+Write an estimator function to use with `boot()` that calculates the correlation between sleep hours and age from the NHANES survey. Hint: use the `cor()` function.
+
+```{r}
+my_boot_statistic <- function(data, indices) {
+  resampled_data <- data[indices,]
+  corr_value <- cor(resampled_data$SleepHrsNight, resampled_data$Age)
+  return(corr_value)
+}
+
+# Bonus: let's see this function in action
+results <- boot(data = NHANES_sleep, 
+                statistic = my_boot_statistic, 
+                R = 100)
+results
+```
+
+### EXERCISE 3
+
+Let's use the `iris` dataset this time. Compute a bootstrapped estimate of the correlation coefficient between `Sepal.Length` and `Petal.Length` for the species "Setosa".
+
+```{r}
+# step 1 - define your statistic of interest - we did something similar in exercise 2
+my_boot_statistic <- function(data, indices) {
+  resampled_data <- data[indices,]
+  corr_value <- cor(resampled_data$Sepal.Length, resampled_data$Petal.Length)
+  return(corr_value)
+}
+
+# step 2 - boot strap with R resamples
+boot_results <- boot(data = iris[iris$Species=="setosa",],
+                     statistic = my_boot_statistic,
+                     R = 100)
+
+# step 3 - plot the diagnostic plots
+plot(boot_results)
+boot_results
+
+# step 4 - change the R value if needed and plot results again
+boot_results <- boot(data = iris[iris$Species=="setosa",],
+                     statistic = my_boot_statistic,
+                     R = 1000)
+plot(boot_results)
+boot_results
+```
+
+### EXERCISE 4
+
+Estimate the mean and 90% confidence intervals for the *difference* in sleep hours between male and female respondents in the `NHANES_sleep` dataset.
+
+```{r}
+# step 1 - define your statistic of interest
+my_boot_statistic <- function(data, indices){
+  resampled_data <- data[indices,]
+  
+  mean_sleephrs_male <- mean(resampled_data[resampled_data$Gender=="male",]$SleepHrsNight)
+  mean_sleephrs_female <- mean(resampled_data[resampled_data$Gender=="female",]$SleepHrsNight)
+  
+  diff <- mean_sleephrs_male - mean_sleephrs_female
+  return(diff)
+}
+
+# step 2 - get the boot result object
+boot_results <- boot(NHANES_sleep, my_boot_statistic, R = 1000)
+
+# step 3 - calculate the confidence intervals using the boot results object
+boot.ci(boot_results, conf = 0.90, type = "perc")
+```
