@@ -26,7 +26,7 @@ library(boot)
 
 -   **Bootstrap resampling** is *random sampling with replacement.*
 
--   The **core assumption of the bootstrap** is that the randomness in your data, and therefore the statistical uncertainty in your answer, arises from the process of sampling. While the bootstrap isn't explicitly designed for anything else, it's actually provides a pretty good approximation for *other* common forms of randomness as well such as experimental randomization, measurement error, or intrinsic variability of some natural process (e.g. your heart rate).
+-   The **core assumption of the bootstrap** is that the randomness in your data, and therefore the statistical uncertainty in your answer, arises from the process of sampling. While the bootstrap isn't explicitly designed for anything else, it's actually provides a pretty good approximation for *other* common forms of randomness as well such as experimental randomization, measurement error, or intrinsic variability of some natural process (e.g. your heart rate).
 
 ![](images/Illustration_bootstrap.svg){fig-align="center"}
 
@@ -55,7 +55,7 @@ View(NHANES_sleep)
 names(NHANES_sleep)
 ```
 
-The `NHANES_sleep` file contains information on people's gender, age, self-reported race/ethnicity, and home ownership status. It also has a few pieces of health information: 1) the self-reported number of hours each study participant usually gets at night on weekdays or workdays; 2) whether the respondent has smoked 100 or more cigarettes in their life (yes or no); and 3) the self-reported frequency of days per month where the participant felt down, depressed or hopeless, where the options are "None," "Several,"Majority" (more than half the days), or "Almost All."
+The `NHANES_sleep` file contains information on people's gender, age, self-reported race/ethnicity, and home ownership status. It also has a few pieces of health information: 1) the self-reported number of hours each study participant usually gets at night on weekdays or workdays; 2) whether the respondent has smoked 100 or more cigarettes in their life (yes or no); and 3) the self-reported frequency of days per month where the participant felt down, depressed or hopeless.
 
 ### Example: sample mean
 
@@ -152,7 +152,7 @@ mean(resampled_means_vector)
 
 The `{boot}` package provides a convenient and fast (i.e. parallel) way to calculate bootstrapped estimates. The function `boot()` is as follows:
 
-```{r}
+```         
 ?boot
 
 boot(data,          # The data as a vector, matrix or data frame
@@ -371,8 +371,8 @@ resampled_means_vector <- c()
 
 for (i in 1:iterations) {
   # your code here
-  resample <- sample(gender_f$Age, size, replace = TRUE) # fill with appropriate input parameters
-  
+  resample <- sample(gender_f$Age, size, replace = TRUE) 
+
   resample_mean <- mean(resample)
   resampled_means_vector[i] <- resample_mean
 }
